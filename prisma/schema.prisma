@@ -20,10 +20,45 @@ datasource db {
 
 
 model User {
-  id        String   @id @default(uuid())
-  name      String
-  email     String   @unique
-  password  String
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  password     String
+  refreshToken String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  repositories Repository[]
+}
+
+
+enum RepositorySource {
+  ZIP
+  GITHUB
+}
+
+enum RepositoryStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+
+model Repository {
+  id               String              @id @default(uuid())
+  name             String
+  description      String?
+  sourceType       RepositorySource
+  githubUrl        String?
+  zipPath          String?
+  originalFileName String?
+  fileSize         Int?
+  status           RepositoryStatus    @default(PENDING)
+
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
