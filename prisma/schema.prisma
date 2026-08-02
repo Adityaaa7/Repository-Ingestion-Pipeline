@@ -55,6 +55,10 @@ model Repository {
   fileSize         Int?
   status           RepositoryStatus    @default(PENDING)
 
+  fileTree   Json?
+  statistics Json?
+  languages  Json?
+
   userId String
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
