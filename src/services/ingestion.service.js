@@ -10,6 +10,7 @@ import unzipper from "unzipper";
 import { buildFileTree } from "./fileTree.service.js";
 import { calculateRepositoryStats } from "./repositoryStats.service.js";
 import { detectLanguages } from "./languageDetection.service.js";
+import { generateAST } from './ast.service.js'
 
 const ingestRepository = async (repository) => {
   const repositoryPath = path.join(
@@ -41,5 +42,12 @@ const ingestRepository = async (repository) => {
     languages,
   };
 };
+
+// tree generation
+// const tree = generateAST(
+//   "C:/Users/SHARAYU/OneDrive/Desktop/repo-intelligence-platform/src/app.js"
+// );
+
+// console.log(tree.rootNode.toString());
 
 export { ingestRepository };

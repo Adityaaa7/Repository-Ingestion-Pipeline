@@ -6,8 +6,7 @@
 
 //Generate a JavaScript client that my application can use.
 generator client {  
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 
@@ -15,6 +14,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 
