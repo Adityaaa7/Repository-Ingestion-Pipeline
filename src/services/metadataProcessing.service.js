@@ -11,7 +11,7 @@ const processMetadata = (asts) => {
       metadata: extractMetadata(ast.tree),
     });
   }
-
+//  console.log(JSON.stringify(metadata, null, 2));
   return metadata;
 };
 

@@ -9,18 +9,48 @@ const traverse = (node, callback) => {
   }
 };
 
+// Extract the actual callee name from a call expression.
+// Examples:
+// path.join()              -> path.join
+// fs.createReadStream()    -> fs.createReadStream
+// foo()                    -> foo
+// promise()                -> promise
+const getCalledFunctionName = (callNode) => {
+  const functionNode = callNode.childForFieldName("function");
+
+  if (!functionNode) return null;
+
+  // Simple function call:
+  // login()
+  if (functionNode.type === "identifier") {
+    return functionNode.text;
+  }
+
+  // Member function call:
+  // path.join()
+  // fs.mkdirSync()
+  // entry.isDirectory()
+  if (functionNode.type === "member_expression") {
+    const propertyNode = functionNode.childForFieldName("property");
+
+    if (!propertyNode) return null;
+
+    return propertyNode.text;
+  }
+
+  return null;
+};
 
 const extractMetadata = (tree) => {
-  const metadata = {
-    imports: [],
-    exports: [],
-    functions: [],
-    classes: [],
-    methods: [],
-    calls: [],
-    routes: [],
-    databaseModels: [],
-  };
+const metadata = {
+  imports: [],
+  exports: [],
+  functions: [],
+  classes: [],
+  methods: [],
+  routes: [],
+  databaseModels: [],
+};
 
   const rootNode = tree.rootNode;
 
@@ -30,73 +60,161 @@ const extractMetadata = (tree) => {
     if (node.type === "import_statement") {
       const sourceNode = node.childForFieldName("source");
 
-      metadata.imports.push(
-        sourceNode.text.replace(/['"]/g, "")
-      );
+      if (sourceNode) {
+        const importPath = sourceNode.text.replace(/['"]/g, "");
+
+        if (!metadata.imports.includes(importPath)) {
+          metadata.imports.push(importPath);
+        }
+      }
     }
 
-    //export metadata extraction
-    if (node.type === "export_statement") {
-         metadata.exports.push(node.text);
-    }
+// Export metadata extraction
+      if (node.type === "export_statement") {
+        const exportText = node.text.trim();
+
+        let exportedItem = null;
+
+        // export { createRepository };
+        const namedExport = exportText.match(/^export\s*\{\s*([^}]+)\s*\}/);
+
+        // export default prisma;
+        const defaultExport = exportText.match(/^export\s+default\s+([a-zA-Z_$][\w$]*)/);
+
+        if (namedExport) {
+          exportedItem = namedExport[1]
+            .split(",")
+            .map((item) => item.trim());
+
+          for (const item of exportedItem) {
+            if (!metadata.exports.includes(item)) {
+              metadata.exports.push(item);
+            }
+          }
+        } else if (defaultExport) {
+          exportedItem = defaultExport[1];
+
+          if (!metadata.exports.includes(exportedItem)) {
+            metadata.exports.push(exportedItem);
+          }
+        }
+      }
 
     //function metadata extraction (for classic defination:  function login(){})
-    if (node.type === "function_declaration") {
-    const nameNode = node.childForFieldName("name");
+    //and push all the calls i.e. this functions calls .....
+        if (node.type === "function_declaration") {
+  const nameNode = node.childForFieldName("name");
 
-    metadata.functions.push(nameNode.text);
+  if (!nameNode) continue;
+
+  const functionData = {
+    name: nameNode.text,
+    calls: [],
+  };
+
+  traverse(node, (child) => {
+    if (child.type !== "call_expression") return;
+
+    const calledFunction = getCalledFunctionName(child);
+
+    if (
+      calledFunction &&
+      !functionData.calls.includes(calledFunction)
+    ) {
+      functionData.calls.push(calledFunction);
     }
+  });
 
-    // for arrow and async arrow  functions
-    //              conseptually 
-//              lexical_declaration
-//                    ↓
-//             variable_declarator
-//                     ↓
-//               function_expression
+  metadata.functions.push(functionData);
+}
 
 
-    if (node.type === "lexical_declaration") {
-        const declarator = node.namedChildren.find(
-            (child) => child.type === "variable_declarator"
+
+ // for arrow and async arrow functions
+//
+// Direct:
+// const login = async () => {}
+//
+// Wrapped:
+// const login = asyncHandler(async () => {})
+//
+// AST:
+//
+// lexical_declaration
+//      ↓
+// variable_declarator
+//      ↓
+// value
+//      ├── arrow_function
+//      │
+//      └── call_expression
+//            ├── identifier
+//            └── arguments
+//                  ↓
+//             arrow_function
+
+if (
+  node.type === "lexical_declaration" ||
+  (
+    node.type === "export_statement" &&
+    node.namedChildren.some(
+      (child) => child.type === "lexical_declaration"
+    )
+  )
+) {
+  const lexicalDeclaration =
+    node.type === "lexical_declaration"
+      ? node
+      : node.namedChildren.find(
+          (child) => child.type === "lexical_declaration"
         );
 
-        if (!declarator) continue;
+  if (!lexicalDeclaration) continue;
 
-        const valueNode = declarator.childForFieldName("value");
+  for (const declarator of lexicalDeclaration.namedChildren.filter(
+    (child) => child.type === "variable_declarator"
+  )) {
+    const valueNode = declarator.childForFieldName("value");
 
-        if (
-            valueNode &&
-            (
-            valueNode.type === "arrow_function" ||
-            valueNode.type === "function_expression"
-            )
-        ) {
-            const nameNode = declarator.childForFieldName("name");
-
-            metadata.functions.push(nameNode.text);
-        }
-        }
-
-        //for class exraction
-        if (node.type === "class_declaration") {
-        const nameNode = node.childForFieldName("name");
-
-        metadata.classes.push(nameNode.text);
-        }
+    if (
+      !valueNode ||
+      (
+        valueNode.type !== "arrow_function" &&
+        valueNode.type !== "function_expression"
+      )
+    ) {
+      continue;
     }
 
-        //CALL EXPRESSION EXTRACTION 
-        //extract the recusrive calls or call inside calls to understand the relationships
-    traverse(rootNode, (node) => {
-  if (node.type === "call_expression") {
-    const functionNode = node.childForFieldName("function");
+    const nameNode = declarator.childForFieldName("name");
 
-    if (functionNode) {
-      metadata.calls.push(functionNode.text);
-    }
+    if (!nameNode) continue;
+
+    const functionData = {
+      name: nameNode.text,
+      calls: [],
+    };
+
+    traverse(valueNode, (child) => {
+      if (child.type !== "call_expression") return;
+
+      const functionNode = child.childForFieldName("function");
+
+      if (!functionNode) return;
+
+      if (!functionData.calls.includes(functionNode.text)) {
+        functionData.calls.push(functionNode.text);
+      }
+    });
+
+    metadata.functions.push(functionData);
   }
-});
+}
+
+
+    }
+
+
 
         //extacting the class methods: methods decalred inside the methods
 
@@ -172,41 +290,85 @@ const extractMetadata = (tree) => {
   metadata.routes.push({
     method: propertyNode.text,
     path: args.namedChildren[0].text.replace(/['"]/g, ""),
-    handler: args.namedChildren[1].text,
+    handler: args.namedChildren[args.namedChildren.length-1],
   });
 });
 
-//      database modules extractions
+
+
+// database operation extraction
 traverse(rootNode, (node) => {
-  if (node.type !== "call_expression") return;
+  let functionName = null;
+  let functionBody = null;
 
-  const functionNode = node.childForFieldName("function");
+  // function createRepository() {}
+  if (node.type === "function_declaration") {
+    const nameNode = node.childForFieldName("name");
 
-  if (!functionNode) return;
+    if (!nameNode) return;
 
-  if (functionNode.type !== "member_expression") return;
+    functionName = nameNode.text;
+    functionBody = node;
+  }
 
-  const operationNode = functionNode.childForFieldName("property");
-  const modelExpression = functionNode.childForFieldName("object");
+  // const createRepository = async () => {}
+  // const createRepository = function () {}
+  if (node.type === "lexical_declaration") {
+    const declarator = node.namedChildren.find(
+      (child) => child.type === "variable_declarator"
+    );
 
-  if (!operationNode || !modelExpression) return;
+    if (!declarator) return;
 
-  if (modelExpression.type !== "member_expression") return;
+    const nameNode = declarator.childForFieldName("name");
+    const valueNode = declarator.childForFieldName("value");
 
-  const clientNode = modelExpression.childForFieldName("object");
-  const modelNode = modelExpression.childForFieldName("property");
+    if (!nameNode || !valueNode) return;
 
-  if (!clientNode || !modelNode) return;
+    if (
+      valueNode.type === "arrow_function" ||
+      valueNode.type === "function_expression"
+    ) {
+      functionName = nameNode.text;
+      functionBody = valueNode;
+    }
+  }
 
-  if (clientNode.text !== "prisma") return;
+  if (!functionName || !functionBody) return;
 
-  metadata.databaseModels.push({
-    client: clientNode.text,
-    model: modelNode.text,
-    operation: operationNode.text,
+  traverse(functionBody, (child) => {
+    if (child.type !== "call_expression") return;
+
+    const functionNode = child.childForFieldName("function");
+
+    if (!functionNode) return;
+
+    if (functionNode.type !== "member_expression") return;
+
+    const operationNode = functionNode.childForFieldName("property");
+    const modelExpression = functionNode.childForFieldName("object");
+
+    if (!operationNode || !modelExpression) return;
+
+    if (modelExpression.type !== "member_expression") return;
+
+    const clientNode = modelExpression.childForFieldName("object");
+    const modelNode = modelExpression.childForFieldName("property");
+
+    if (!clientNode || !modelNode) return;
+
+    if (clientNode.text !== "prisma") return;
+
+    metadata.databaseModels.push({
+      function: functionName,
+      client: clientNode.text,
+      model: modelNode.text,
+      operation: operationNode.text,
+    });
   });
 });
-    
+
+return metadata;
 };
 
 export { extractMetadata };

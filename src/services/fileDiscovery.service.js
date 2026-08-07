@@ -7,6 +7,17 @@ import path from "path";
 
 const SUPPORTED_EXTENSIONS = [".js"];
 
+const ignoredDirectories = [
+  "node_modules",
+  ".git",
+  "dist",
+  "build",
+  "coverage",
+  ".next",
+  ".turbo",
+  "repositories",
+];
+
 const getSourceFiles = (directoryPath) => {
   const sourceFiles = [];
 
@@ -19,6 +30,9 @@ const getSourceFiles = (directoryPath) => {
       const fullPath = path.join(currentPath, entry.name);
 
       if (entry.isDirectory()) {
+         if (ignoredDirectories.includes(entry.name)) {
+            continue;
+       }
         traverse(fullPath);
       } else {
         const extension = path.extname(entry.name);
