@@ -4,6 +4,7 @@ import { processRepositoryAST } from "./services/astProcessing.service.js";
 import { processMetadata } from "./services/metadataProcessing.service.js";
 import { extractRelationships } from "./services/relationship.service.js";
 import { resolveRelationships } from "./services/relationshipResolution.service.js";
+import { buildGraph } from "./services/graph.service.js";
 
 const repositoryPath ="C:/Users/SHARAYU/OneDrive/Desktop/repo-intelligence-platform";
 
@@ -29,7 +30,30 @@ const relationships = extractRelationships(metadata);
 
 //  console.dir(relationships, { depth: null });
 
+// const authController = metadata.find((file) =>
+//   file.filePath.endsWith("auth.controller.js")
+// );
+
+// console.dir(authController, { depth: null });
+
 const resolvedRelationships = resolveRelationships(relationships,metadata);
 
-console.dir(resolvedRelationships, { depth: null });
+// console.dir(resolvedRelationships, { depth: null });
+
+// console.dir(
+//   resolvedRelationships.filter(
+//     (relationship) => relationship.type === "HANDLED_BY"
+//   ),
+//   { depth: null }
+// );
+
+const graph = buildGraph(resolvedRelationships,metadata);
+
+
+// console.dir(
+//   graph.edges.filter((edge) => edge.type === "CONTAINS"),
+//   { depth: null }
+// );
+
+// console.dir(graph, { depth: null });
 

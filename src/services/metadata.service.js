@@ -174,28 +174,45 @@ if (
   for (const declarator of lexicalDeclaration.namedChildren.filter(
     (child) => child.type === "variable_declarator"
   )) {
+    const nameNode = declarator.childForFieldName("name");
     const valueNode = declarator.childForFieldName("value");
 
+    if (!nameNode || !valueNode) continue;
+
+    let functionNode = null;
+
+    // Direct arrow/function expression
     if (
-      !valueNode ||
-      (
-        valueNode.type !== "arrow_function" &&
-        valueNode.type !== "function_expression"
-      )
+      valueNode.type === "arrow_function" ||
+      valueNode.type === "function_expression"
     ) {
-      continue;
+      functionNode = valueNode;
     }
 
-    const nameNode = declarator.childForFieldName("name");
+    // Wrapped function:
+    // const login = asyncHandler(async () => {})
+    else if (valueNode.type === "call_expression") {
+      traverse(valueNode, (child) => {
+        if (
+          !functionNode &&
+          (
+            child.type === "arrow_function" ||
+            child.type === "function_expression"
+          )
+        ) {
+          functionNode = child;
+        }
+      });
+    }
 
-    if (!nameNode) continue;
+    if (!functionNode) continue;
 
     const functionData = {
       name: nameNode.text,
       calls: [],
     };
 
-    traverse(valueNode, (child) => {
+    traverse(functionNode, (child) => {
       if (child.type !== "call_expression") return;
 
       const functionNode = child.childForFieldName("function");
